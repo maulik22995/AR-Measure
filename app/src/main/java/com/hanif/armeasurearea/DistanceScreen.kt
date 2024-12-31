@@ -2,10 +2,12 @@ package com.hanif.armeasurearea
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +28,8 @@ import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.TrackingFailureReason
+import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.createAnchorOrNull
@@ -33,11 +37,17 @@ import io.github.sceneview.ar.arcore.isValid
 import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberARCameraNode
+import io.github.sceneview.collision.Vector3
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
+import io.github.sceneview.math.toFloat3
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
+import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -45,7 +55,6 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberNodes
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
-import kotlinx.coroutines.delay
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -67,12 +76,11 @@ fun DistanceScreen() {
             val childNodes = rememberNodes()
             val view = rememberView(engine)
             val collisionSystem = rememberCollisionSystem(view)
-
-            var planeRenderer by remember { mutableStateOf(true) }
+            var totalDistance by remember { mutableStateOf(0.0) }
+            val planeRenderer by remember { mutableStateOf(true) }
             val modelInstances = remember { mutableListOf<ModelInstance>() }
             var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
             var frame by remember { mutableStateOf<Frame?>(null) }
-
             ARScene(
                 modifier = Modifier.fillMaxSize(),
                 childNodes = childNodes,
@@ -98,93 +106,72 @@ fun DistanceScreen() {
                 onSessionUpdated = { _, updatedFrame ->
                     frame = updatedFrame
                 },
-                onGestureListener = rememberOnGestureListener(
-                    onSingleTapConfirmed = { motionEvent, node ->
-                        if (node == null) {
-                            val hitResults = frame?.hitTest(motionEvent.x, motionEvent.y)
-                            val hitResult = hitResults?.firstOrNull {
-                                it.isValid(depthPoint = true, point = true)
+                onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { motionEvent, node ->
+                    if (node == null) {
+                        val hitResults = frame?.hitTest(motionEvent.x, motionEvent.y)
+                        val hitResult =
+                            hitResults?.firstOrNull { it.isValid(depthPoint = true, point = true) }
+
+                        hitResult?.createAnchorOrNull()?.let { anchor ->
+                            // Add the new marker
+                            val newNode = createAnchorNode(
+                                engine = engine,
+                                modelLoader = modelLoader,
+                                materialLoader = materialLoader,
+                                modelInstances = modelInstances,
+                                anchor = anchor,
+                                kModelFile = "models/pin.glb"
+                            )
+
+                            childNodes += newNode
+
+                            // Draw a line between the last two markers
+                            if (childNodes.size > 1) {
+                                val previousMarker =
+                                    childNodes[childNodes.size - if (childNodes.size == 2) 2 else 3]
+                                val currentMarker = childNodes.last()
+
+                                // Create a line between the two markers
+                                childNodes += createLineNode(
+                                    engine = engine,
+                                    anchor1 = previousMarker as AnchorNode,
+                                    anchor2 = currentMarker as AnchorNode,
+                                    materialLoader = materialLoader,
+                                )
                             }
-                            when (childNodes.size) {
-                                0 -> {
-                                    hitResult?.createAnchorOrNull()?.let { anchor ->
-                                        planeRenderer = false
-                                        childNodes += createAnchorNode(
-                                            engine = engine,
-                                            modelLoader = modelLoader,
-                                            materialLoader = materialLoader,
-                                            modelInstances = modelInstances,
-                                            anchor = anchor,
-                                            kModelFile = "models/pin.glb"
-                                        )
-                                    }
-                                }
-
-                                1 -> {
-                                    hitResult?.createAnchorOrNull()?.let { anchor ->
-                                        planeRenderer = false
-                                        childNodes += createAnchorNode(
-                                            engine = engine,
-                                            modelLoader = modelLoader,
-                                            materialLoader = materialLoader,
-                                            modelInstances = modelInstances,
-                                            anchor = anchor,
-                                            kModelFile = "models/pin.glb"
-                                        )
-                                    }
-
-                                    val position1 = childNodes[0].worldPosition
-                                    val position2 = childNodes[1].worldPosition
-
-                                    val distance = calculateDistance(
-                                        position1.x - position2.x,
-                                        position1.y - position2.y,
-                                        position1.z - position2.z
-                                    )
-
-                                    calculatedDistance =
-                                        "Distance: ${changeUnit(distance, "cm")} cm"
-                                }
-
-                                else -> {
-                                    childNodes.clear()
-                                    hitResult?.createAnchorOrNull()?.let { anchor ->
-                                        planeRenderer = false
-                                        childNodes += createAnchorNode(
-                                            engine = engine,
-                                            modelLoader = modelLoader,
-                                            materialLoader = materialLoader,
-                                            modelInstances = modelInstances,
-                                            anchor = anchor,
-                                            kModelFile = "models/pin.glb"
-                                        )
-                                    }
-                                    calculatedDistance = null
-                                }
-                            }
-                        } else {
-                            Toast.makeText(context, "", Toast.LENGTH_LONG).show()
                         }
+                    } else {
+                        Toast.makeText(context, "Node tapped", Toast.LENGTH_LONG).show()
                     }
-                )
+                })
             )
 
             // Update the distance dynamically
-            LaunchedEffect(childNodes) {
-                while (true) {
-                    if (childNodes.size == 2) {
-                        val position1 = childNodes[0].worldPosition
-                        val position2 = childNodes[1].worldPosition
+            LaunchedEffect(childNodes.size) {
+                val allAnchorNodes = childNodes.filterIsInstance<AnchorNode>()
+                var totalDistanceLocal = 0.0f
+                if (allAnchorNodes.size > 1) {
+                    allAnchorNodes.forEachIndexed { index, node ->
+                        if(index != allAnchorNodes.size -1){
+                            val position1 = node.worldPosition
+                            val position2 = childNodes[index + 1].worldPosition
+                            val distance = calculateDistance(
+                                position1.x - position2.x,
+                                position1.y - position2.y,
+                                position1.z - position2.z
+                            )
+                            totalDistanceLocal += distance
+                        }
 
-                        val distance = calculateDistance(
-                            position1.x - position2.x,
-                            position1.y - position2.y,
-                            position1.z - position2.z
-                        )
-
-                        calculatedDistance = "Distance: ${changeUnit(distance, "cm")} cm"
                     }
-                    delay(100) // Update every 100ms
+                    calculatedDistance = "Total Distance: ${
+                        changeUnit(
+                            totalDistanceLocal.toFloat(),
+                            "cm"
+                        )
+                    } cm"
+                } else {
+                    calculatedDistance = null
                 }
             }
 
@@ -205,19 +192,97 @@ fun DistanceScreen() {
                     }
             )
 
-            calculatedDistance?.let {
-                Text(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(16.dp),
-                    text = it,
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    textAlign = TextAlign.Center
-                )
+
+            Column(
+                modifier = Modifier.align(Alignment.BottomCenter),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                calculatedDistance?.let {
+                    Text(
+                        modifier = Modifier
+                            .padding(16.dp),
+                        text = it,
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    if (childNodes.size > 0) {
+                        Button(onClick = {
+                            if (childNodes.last() is CubeNode) {
+                                childNodes.removeLastOrNull()
+                            }
+                            childNodes.removeLastOrNull()
+                        }, modifier = Modifier.padding(bottom = 10.dp)) {
+                            Text(text = "Undo")
+                        }
+                    }
+                }
             }
+
+
         }
     }
+}
+
+fun Position.toVector3(): Vector3 = Vector3(x, y, z)
+fun Vector3.toPosition(): Position = Float3(x, y, z)
+
+
+fun createLineNode(
+    engine: Engine,
+    anchor1: AnchorNode,
+    anchor2: AnchorNode,
+    materialLoader: MaterialLoader,
+): Node {
+    val point1 = anchor1.worldPosition
+    val point2 = anchor2.worldPosition
+
+    val point1Vector3 = point1.toVector3()
+    val point2Vector3 = point2.toVector3()
+
+    val difference = Vector3.subtract(point1Vector3, point2Vector3);
+    val directionFromTopToBottom = difference.normalized();
+
+    // Calculate the direction and length of the line
+    val direction = Vector3(point2.x - point1.x, point2.y - point1.y, point2.z - point1.z)
+    val length = direction.length()
+
+    val rotationFromAToB = io.github.sceneview.collision.Quaternion.lookRotation(
+        directionFromTopToBottom,
+        Vector3.up()
+    )
+
+    val cube = CubeNode(
+        engine,
+        size = Size(0.01f, 0.01f, difference.length()), // Thin cube (small X/Z, stretched Y)
+        center = Vector3.zero().toFloat3(),
+        materialInstance = materialLoader.createColorInstance(Color.Yellow)
+    ).apply {
+        position = Vector3.add(point1Vector3, point2Vector3).scaled(.5f).toPosition()
+        quaternion = Quaternion(
+            rotationFromAToB.x,
+            rotationFromAToB.y,
+            rotationFromAToB.z,
+            rotationFromAToB.w
+        )
+    }
+
+    val cylinder = CylinderNode(
+        engine,
+        radius = 0.0025f,
+        height = length,
+        center = Vector3.zero().toFloat3(),
+        materialInstance = materialLoader.createColorInstance(Color.Yellow)
+    ).apply {
+        worldPosition = Vector3.add(point1Vector3, point2Vector3).scaled(.5f).toPosition()
+//        worldRotation = Rotation(quaternionCal.x,quaternionCal.y,quaternionCal.z)
+//        worldQuaternion = quaternionCal // Adjusted rotation
+    }
+
+//    cube.parent = anchor1
+
+
+    return cube
 }
 
 private fun calculateDistance(x: Float, y: Float, z: Float): Float {
@@ -240,7 +305,7 @@ fun createAnchorNode(
     materialLoader: MaterialLoader,
     modelInstances: MutableList<ModelInstance>,
     anchor: Anchor,
-    kModelFile : String = "models/anim.glb"
+    kModelFile: String = "models/anim.glb"
 ): AnchorNode {
     val anchorNode = AnchorNode(engine = engine, anchor = anchor)
     val modelNode = ModelNode(
