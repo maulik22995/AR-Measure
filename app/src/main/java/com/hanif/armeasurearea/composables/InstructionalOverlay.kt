@@ -1,5 +1,6 @@
 package com.hanif.armeasurearea.composables
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -79,7 +80,7 @@ private fun InstructionalCard(
         modifier = modifier,
         shape = shape,
         colors = colors,
-        elevation = elevation
+//        elevation = elevation
     ) {
         Text(
             text = text,
