@@ -74,5 +74,8 @@ dependencies {
 
         // ARSceneView
         implementation(arsceneview)
+
+        // Lottie
+        implementation(libs.lottie)
     }
 }
