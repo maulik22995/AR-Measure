@@ -1,17 +1,16 @@
 package com.hanif.armeasurearea
 
 import android.util.Log
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,17 +20,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import com.hanif.armeasurearea.composables.ActionButton
+import com.hanif.armeasurearea.composables.InstructionalOverlay
+import com.hanif.armeasurearea.ui.theme.LocalDimens
 import com.hanif.armeasurearea.utils.Constant
 import com.hanif.armeasurearea.utils.calculateTotalDistance
 import com.hanif.armeasurearea.utils.changeUnit
@@ -43,7 +42,6 @@ import io.github.sceneview.ar.ARScene
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.createAnchorOrNull
 import io.github.sceneview.ar.arcore.isValid
-import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.model.ModelInstance
@@ -71,6 +69,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
     val collisionSystem = rememberCollisionSystem(view)
     val planeRenderer by remember { mutableStateOf(true) }
     var measureVertical by remember { mutableStateOf(false) }
+    var showCoachingOverlay by remember { mutableStateOf(true) }
     val modelInstances = remember { mutableListOf<ModelInstance>() }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var frame by remember { mutableStateOf<Frame?>(null) }
@@ -121,10 +120,15 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 },
                 cameraNode = cameraNode,
                 planeRenderer = planeRenderer,
-                onTrackingFailureChanged = { trackingFailureReason = it },
+                onTrackingFailureChanged = {
+                    showCoachingOverlay = it != null
+                    trackingFailureReason = it
+                },
                 onSessionUpdated = { _, updatedFrame ->
                     frame = updatedFrame
                     // Only update the pointer when tracking state is TRACKING
+                    if (updatedFrame.camera.trackingState == TrackingState.PAUSED) showCoachingOverlay =
+                        true
                     if (updatedFrame.camera.trackingState == TrackingState.TRACKING) {
 
                         if (measureVertical) {
@@ -152,6 +156,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             hitResult?.createAnchorOrNull()?.let { anchorHit ->
 
                                 if (centerSphereNode == null) {
+                                    showCoachingOverlay = false
                                     // Create the sphere and add it as a child
                                     val sphereNode = CylinderNode(
                                         engine = engine,
@@ -166,6 +171,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
 
                                     childNodes += centerSphereNode!!
                                 } else {
+                                    showCoachingOverlay = false
                                     centerSphereNode?.apply {
                                         anchor = anchorHit
                                     }
@@ -211,6 +217,17 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 },
             )
 
+            AnimatedVisibility(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = LocalDimens.ARView.OverlayAlpha)),
+                visible = showCoachingOverlay,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                ARCoachingOverlay()
+            }
+
             // Update the distance dynamically
             LaunchedEffect(childNodes.size) {
                 val allAnchorNodes = childNodes.filter { it.name == Constant.MARKER }
@@ -223,73 +240,53 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 } cm"
             }
 
-            Text(
+            ActionButton(
+                icon = painterResource(R.drawable.ic_horizontal_24),
+                contentDescription = "measurement",
+                rotationAngle = rotationAngle,
+                onClick = {
+                    measureVertical = !measureVertical
+                },
                 modifier = Modifier
-                    .systemBarsPadding()
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(top = 16.dp, start = 32.dp, end = 32.dp),
-                textAlign = TextAlign.Center,
-                fontSize = 28.sp,
-                color = Color.White,
-                text = trackingFailureReason?.getDescription(LocalContext.current)
-                    ?: if (childNodes.isEmpty()) {
-                        stringResource(R.string.point_your_phone_down)
-                    } else {
-                        stringResource(R.string.tap_anywhere_to_add_model)
-                    }
+                    .align(Alignment.TopEnd)
             )
 
-//            Image(
-//                painterResource(R.drawable.ic_horizontal_24),
-//                contentDescription = "measurement",
-//                contentScale = ContentScale.Inside,
-//                modifier = Modifier
-//                    .size(50.dp)
-//                    .align(Alignment.TopEnd)
-//                    .background(shape = CircleShape, color = Color.White.copy(alpha = 0.5f))
-//                    .graphicsLayer {
-//                        rotationZ = rotationAngle
-//                    }
-//                    .clickable {
-//                        measureVertical = !measureVertical
-//                    }
-//            )
-            Column(
-                modifier = Modifier.align(Alignment.BottomCenter),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                calculatedDistance?.let {
-                    Text(
-                        modifier = Modifier
-                            .padding(16.dp),
-                        text = it,
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-                if (childNodes.size > 0) {
-                    Button(onClick = {
-                        val lastNode = childNodes.last()
-                        if (lastNode is AnchorNode && lastNode.name == Constant.POINTER) {
+            InstructionalOverlay(
+                trackingFailureReason = trackingFailureReason,
+                childNodes = childNodes,
+                calculatedDistance = calculatedDistance
+            )
 
+            if (childNodes.isNotEmpty()) {
+                ActionButton(
+                    icon = painterResource(R.drawable.vd_undo),
+                    contentDescription = "Undo",
+                    rotationAngle = rotationAngle,
+                    onClick = {
+                        val lastNode = childNodes.lastOrNull()
+                        if (lastNode is AnchorNode && lastNode.name == Constant.POINTER) {
+                            // Do nothing
                         } else {
-                            if (childNodes.last() is CubeNode) {
+                            if (lastNode is CubeNode) {
                                 childNodes.removeLastOrNull()
                             }
                             childNodes.removeLastOrNull()
                         }
+                    },
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .align(Alignment.BottomEnd)
+                )
+            }
 
-                    }, modifier = Modifier.padding(bottom = 10.dp)) {
-                        Text(text = "Undo")
-                    }
-                }
-                if (centerSphereNode?.isVisible == true) {
-                    Button(onClick = {
+            if (centerSphereNode?.isVisible == true) {
+                ActionButton(
+                    icon = painterResource(R.drawable.vd_add), // Replace with your actual icon
+                    contentDescription = "Add Anchor",
+                    rotationAngle = rotationAngle,
+                    onClick = {
                         // Add marker at center position
                         centerSphereNode?.let { sphere ->
-
                             val newNode = createAnchorNode(
                                 engine = engine,
                                 modelLoader = modelLoader,
@@ -300,12 +297,12 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             )
                             newNode.name = Constant.MARKER
                             childNodes += newNode
-
                         }
-                    }, modifier = Modifier.padding(bottom = 10.dp)) {
-                        Text(text = "Add")
-                    }
-                }
+                    },
+                    modifier = Modifier
+                        .padding(bottom = 10.dp)
+                        .align(Alignment.BottomCenter)
+                )
             }
         }
     }
