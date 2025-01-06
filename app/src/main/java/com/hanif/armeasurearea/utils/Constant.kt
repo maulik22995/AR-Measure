@@ -5,4 +5,5 @@ object Constant {
     const val POINTER = "Pointer"
     const val LINE = "Line"
     const val kMaxModelInstances = 10
+    const val thresholdDistance = 0.05f // Define a threshold distance in meters
 }

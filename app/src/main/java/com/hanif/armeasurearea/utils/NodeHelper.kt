@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.Color
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Pose
-import com.hanif.armeasurearea.utils.Constant.kMaxModelInstances
+import com.hanif.armeasurearea.utils.Constant.thresholdDistance
 import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.node.AnchorNode
@@ -14,9 +14,10 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Transform
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.Node
 import kotlin.math.PI
 import kotlin.math.max
@@ -95,11 +96,19 @@ fun updateLineNode(startNode: Node, endNode: Node, lineNode: CubeNode) {
 
     val difference = Vector3.subtract(point1Vector3, point2Vector3);
 
+
     lineNode.apply {
-        position = calculateMidPosition(point1Vector3, point2Vector3)
-        quaternion = calculateQuaternion(point1, point2)
-        scale = Scale(0.01f, 0.0001f, difference.length())
+//        position = calculateMidPosition(point1Vector3, point2Vector3)
+//        quaternion = calculateQuaternion(point1, point2)
+//        scale = Scale(0.01f, 0.0001f, 0.01f)
+        transform = Transform(
+            position = calculateMidPosition(point1Vector3, point2Vector3),
+            quaternion = calculateQuaternion(point1, point2),
+            scale = Scale(0.005f, 0.0001f, difference.length())
+        )
     }
+
+    Log.e("line updating >>", difference.length().toString())
 }
 
 fun calculateQuaternion(
@@ -171,33 +180,62 @@ fun createAnchorNode(
     kModelFile: String = "models/anim.glb"
 ): AnchorNode {
     val anchorNode = AnchorNode(engine = engine, anchor = anchor)
-    val modelNode = ModelNode(
-        modelInstance = modelInstances.apply {
-            if (isEmpty()) {
-                this += modelLoader.createInstancedModel(kModelFile, kMaxModelInstances)
-            }
-        }.removeLast(),
-        // Scale to fit in a 0.5 meters cube
-        scaleToUnits = 0.1f
-    ).apply {
-        // Model Node needs to be editable for independent rotation from the anchor rotation
-        isEditable = true
-    }
-    val boundingBoxNode = CubeNode(
-        engine,
-        size = modelNode.extents,
-        center = modelNode.center,
-        materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 0.5f))
-    ).apply {
-        isVisible = false
-    }
-    modelNode.addChildNode(boundingBoxNode)
-    anchorNode.addChildNode(modelNode)
+    val sphereNode = CylinderNode(
+        engine = engine,
+        radius = 0.010f, // Sphere radius
+        height = 0.005f, // Sphere height
+        materialInstance = materialLoader.createColorInstance(Color.Blue)
+    )
 
-    listOf(modelNode, anchorNode).forEach {
-        it.onEditingChanged = { editingTransforms ->
-            boundingBoxNode.isVisible = editingTransforms.isNotEmpty()
-        }
-    }
+//    val modelNode = ModelNode(
+//        modelInstance = modelInstances.apply {
+//            if (isEmpty()) {
+//                this += modelLoader.createInstancedModel(kModelFile, kMaxModelInstances)
+//            }
+//        }.removeLast(),
+//        // Scale to fit in a 0.5 meters cube
+//        scaleToUnits = 0.1f
+//    ).apply {
+//        // Model Node needs to be editable for independent rotation from the anchor rotation
+//        isEditable = true
+//    }
+//    val boundingBoxNode = CubeNode(
+//        engine,
+//        size = modelNode.extents,
+//        center = modelNode.center,
+//        materialInstance = materialLoader.createColorInstance(Color.White.copy(alpha = 0.5f))
+//    ).apply {
+//        isVisible = false
+//    }
+//    modelNode.addChildNode(boundingBoxNode)
+//    anchorNode.addChildNode(modelNode)
+//
+//    listOf(modelNode, anchorNode).forEach {
+//        it.onEditingChanged = { editingTransforms ->
+//            boundingBoxNode.isVisible = editingTransforms.isNotEmpty()
+//        }
+//    }
+    anchorNode.addChildNode(sphereNode)
     return anchorNode
+}
+
+fun calculateAndReturnNearestNode(childNodes: List<Node>, anchorHit: Anchor): Node? {
+    return childNodes
+        .filter { it.name == Constant.MARKER }
+        .find { existingNode ->
+            val existingAnchorPose =
+                (existingNode as AnchorNode).anchor.pose
+            val newAnchorPose = anchorHit.pose
+            if (existingAnchorPose != null && newAnchorPose != null) {
+                // Calculate the distance between the two anchors
+                val dx = existingAnchorPose.tx() - newAnchorPose.tx()
+                val dy = existingAnchorPose.ty() - newAnchorPose.ty()
+                val dz = existingAnchorPose.tz() - newAnchorPose.tz()
+                val distance =
+                    Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble())
+                distance <= thresholdDistance // Check if the distance is within the threshold
+            } else {
+                false
+            }
+        }
 }

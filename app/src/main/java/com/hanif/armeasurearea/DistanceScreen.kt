@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,10 +34,10 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import com.hanif.armeasurearea.utils.Constant
+import com.hanif.armeasurearea.utils.calculateAndReturnNearestNode
 import com.hanif.armeasurearea.utils.calculateTotalDistance
 import com.hanif.armeasurearea.utils.changeUnit
 import com.hanif.armeasurearea.utils.createAnchorNode
-import com.hanif.armeasurearea.utils.createLineNode
 import com.hanif.armeasurearea.utils.updateLineNode
 import com.hanif.armeasurearea.utils.updateVerticalMeasuring
 import io.github.sceneview.ar.ARScene
@@ -49,6 +50,7 @@ import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
+import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -62,6 +64,8 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
     var arSceneView by remember { mutableStateOf<ARSceneView?>(null) }
     var calculatedDistance by remember { mutableStateOf<String?>(null) }
     var centerSphereNode by remember { mutableStateOf<AnchorNode?>(null) }
+    var nearbyAnchorNode by remember { mutableStateOf<Node?>(null) }
+    var lastMarkerAnchorNode by remember { mutableStateOf<Node?>(null) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
@@ -80,13 +84,34 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
         animationSpec = tween(durationMillis = 300),
         label = "rotation" // Animation duration
     )
+    val scope = rememberCoroutineScope()
+    val lineNode by remember {
+        mutableStateOf<CubeNode>(
+            CubeNode(
+                engine,
+                materialInstance = materialLoader.createColorInstance(Color.Cyan)
+            )
+        )
+    }
 
-    Log.e("childNodes >>", childNodes.size.toString())
+    // Update the distance dynamically
+    LaunchedEffect(childNodes.size) {
+        Log.e("childNodes >>", childNodes.size.toString())
+        val allAnchorNodes = childNodes.filter { it.name == Constant.MARKER }
+        val totalDistance = calculateTotalDistance(allAnchorNodes)
+        calculatedDistance = "Total Distance: ${
+            changeUnit(
+                totalDistance.toFloat(),
+                "cm"
+            )
+        } cm"
+    }
 
     Box(contentAlignment = Alignment.BottomCenter, modifier = Modifier.padding(innerPadding)) {
         Box(
             modifier = Modifier.fillMaxSize(),
         ) {
+
 
             ARScene(
                 activity = mainActivity,
@@ -151,55 +176,52 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                 }
                             hitResult?.createAnchorOrNull()?.let { anchorHit ->
 
+                                // Check if the anchor is near any existing child nodes
+                                nearbyAnchorNode =
+                                    calculateAndReturnNearestNode(
+                                        childNodes.filter { it != lastMarkerAnchorNode },
+                                        anchorHit
+                                    )
+
+
                                 if (centerSphereNode == null) {
                                     // Create the sphere and add it as a child
                                     val sphereNode = CylinderNode(
+
                                         engine = engine,
                                         radius = 0.010f, // Sphere radius
                                         height = 0.0001f, // Sphere height
                                         materialInstance = materialLoader.createColorInstance(Color.Red)
                                     )
                                     centerSphereNode = AnchorNode(engine, anchorHit)
-                                    centerSphereNode!!.name = Constant.POINTER
+                                    centerSphereNode?.name = Constant.POINTER
 
                                     (centerSphereNode as AnchorNode).addChildNode(sphereNode)
 
                                     childNodes += centerSphereNode!!
+                                    childNodes += lineNode.apply {
+                                        name = Constant.LINE
+                                    }
+
                                 } else {
                                     centerSphereNode?.apply {
-                                        anchor = anchorHit
+                                        anchor =
+                                            if (nearbyAnchorNode == null) anchorHit else (nearbyAnchorNode as AnchorNode).anchor
                                     }
                                 }
 
-                                /**
-                                 * Start line from last Marker or update last line
-                                 */
-                                val allNodeExceptPointers =
-                                    childNodes.filter { it.name != Constant.POINTER }
-                                val lastNode = allNodeExceptPointers.lastOrNull()
-                                if (lastNode is CubeNode) {
-                                    // line is already present so update it as camera move
-                                    val lastMarker =
-                                        allNodeExceptPointers.findLast { it.name == Constant.MARKER }
-                                    if (lastMarker != null && centerSphereNode != null) {
-                                        updateLineNode(
-                                            lastMarker,
-                                            centerSphereNode!!,
-                                            lineNode = lastNode
-                                        )
+                                if (lastMarkerAnchorNode != null && centerSphereNode != null) {
+
+                                    if (!childNodes.contains(lineNode)) {
+                                        // check if line node is not being undo and if it is add it back
+                                        childNodes += lineNode
                                     }
-                                } else {
-                                    // create new line
-                                    if (lastNode != null && centerSphereNode != null) {
-                                        childNodes += createLineNode(
-                                            engine = engine,
-                                            anchor1 = lastNode as AnchorNode,
-                                            anchor2 = centerSphereNode as AnchorNode,
-                                            materialLoader = materialLoader,
-                                        ).apply {
-                                            name = Constant.LINE
-                                        }
-                                    }
+
+                                    updateLineNode(
+                                        lastMarkerAnchorNode as AnchorNode,
+                                        centerSphereNode!!,
+                                        lineNode
+                                    )
                                 }
                             }
                         }
@@ -210,18 +232,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                     }
                 },
             )
-
-            // Update the distance dynamically
-            LaunchedEffect(childNodes.size) {
-                val allAnchorNodes = childNodes.filter { it.name == Constant.MARKER }
-                val totalDistance = calculateTotalDistance(allAnchorNodes)
-                calculatedDistance = "Total Distance: ${
-                    changeUnit(
-                        totalDistance.toFloat(),
-                        "cm"
-                    )
-                } cm"
-            }
 
             Text(
                 modifier = Modifier
@@ -272,15 +282,20 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 if (childNodes.size > 0) {
                     Button(onClick = {
                         val lastNode = childNodes.last()
-                        if (lastNode is AnchorNode && lastNode.name == Constant.POINTER) {
-
-                        } else {
+                        if (lastNode.name != Constant.POINTER) {
                             if (childNodes.last() is CubeNode) {
                                 childNodes.removeLastOrNull()
                             }
-                            childNodes.removeLastOrNull()
+                            if (childNodes.last().name != Constant.POINTER) {
+                                childNodes.removeLastOrNull()
+                            }
                         }
+                        lastMarkerAnchorNode = childNodes.findLast { it.name == Constant.MARKER }
 
+                        if (lastMarkerAnchorNode == null) {
+                            // if all nodes are removed then also remove line node
+                            childNodes.remove(lineNode)
+                        }
                     }, modifier = Modifier.padding(bottom = 10.dp)) {
                         Text(text = "Undo")
                     }
@@ -302,6 +317,24 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             childNodes += newNode
 
                         }
+                        lastMarkerAnchorNode = childNodes.findLast { it.name == Constant.MARKER }
+
+
+                        if (childNodes.contains(lineNode)) {
+                            // if it is first node being added after undoing all
+                            val newLineNode = CubeNode(
+                                engine,
+                                materialInstance = materialLoader.createColorInstance(Color.Cyan)
+                            ).apply {
+//                            position = lineNode.position
+//                            quaternion = lineNode.quaternion
+//                            scale = lineNode.scale
+                                transform = lineNode.transform
+                                name = Constant.LINE
+                            }
+                            childNodes += newLineNode
+                        }
+
                     }, modifier = Modifier.padding(bottom = 10.dp)) {
                         Text(text = "Add")
                     }
