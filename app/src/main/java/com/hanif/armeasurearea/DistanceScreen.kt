@@ -150,6 +150,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 },
                 onSessionUpdated = { _, updatedFrame ->
                     frame = updatedFrame
+
                     // Only update the pointer when tracking state is TRACKING
                     if (updatedFrame.camera.trackingState == TrackingState.PAUSED) showCoachingOverlay =
                         true
@@ -229,10 +230,8 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                 }
                             }
                         }
-                        centerSphereNode?.isVisible = true
                     } else {
                         // Hide or deactivate the pointer if tracking is lost
-                        centerSphereNode?.isVisible = false
                     }
                 },
             )
@@ -246,18 +245,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 exit = fadeOut()
             ) {
                 ARCoachingOverlay()
-            }
-
-            // Update the distance dynamically
-            LaunchedEffect(childNodes.size) {
-                val allAnchorNodes = childNodes.filter { it.name == Constant.MARKER }
-                val totalDistance = calculateTotalDistance(allAnchorNodes)
-                calculatedDistance = "Total Distance: ${
-                    changeUnit(
-                        totalDistance.toFloat(),
-                        "cm"
-                    )
-                } cm"
             }
 
             ActionButton(
@@ -283,95 +270,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                     contentDescription = "Undo",
                     rotationAngle = rotationAngle,
                     onClick = {
-                        val lastNode = childNodes.lastOrNull()
-                        if (lastNode is AnchorNode && lastNode.name == Constant.POINTER) {
-                            // Do nothing
-                        } else {
-                            if (lastNode is CubeNode) {
-                                childNodes.removeLastOrNull()
-                            }
-                            childNodes.removeLastOrNull()
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(10.dp)
-                        .align(Alignment.BottomEnd)
-                )
-            }
-
-            if (centerSphereNode?.isVisible == true) {
-                ActionButton(
-                    icon = painterResource(R.drawable.vd_add), // Replace with your actual icon
-                    contentDescription = "Add Anchor",
-                    rotationAngle = rotationAngle,
-                    onClick = {
-                        // Add marker at center position
-                        centerSphereNode?.let { sphere ->
-                            val newNode = createAnchorNode(
-                                engine = engine,
-                                modelLoader = modelLoader,
-                                materialLoader = materialLoader,
-                                modelInstances = modelInstances,
-                                anchor = sphere.anchor,
-                                kModelFile = "models/pin.glb"
-                            )
-                            newNode.name = Constant.MARKER
-                            childNodes += newNode
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(bottom = 10.dp)
-                        .align(Alignment.BottomCenter)
-                )
-            }
-            Text(
-                modifier = Modifier
-                    .systemBarsPadding()
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(top = 16.dp, start = 32.dp, end = 32.dp),
-                textAlign = TextAlign.Center,
-                fontSize = 28.sp,
-                color = Color.White,
-                text = trackingFailureReason?.getDescription(LocalContext.current)
-                    ?: if (childNodes.isEmpty()) {
-                        stringResource(R.string.point_your_phone_down)
-                    } else {
-                        stringResource(R.string.tap_anywhere_to_add_model)
-                    }
-            )
-
-//            Image(
-//                painterResource(R.drawable.ic_horizontal_24),
-//                contentDescription = "measurement",
-//                contentScale = ContentScale.Inside,
-//                modifier = Modifier
-//                    .size(50.dp)
-//                    .align(Alignment.TopEnd)
-//                    .background(shape = CircleShape, color = Color.White.copy(alpha = 0.5f))
-//                    .graphicsLayer {
-//                        rotationZ = rotationAngle
-//                    }
-//                    .clickable {
-//                        measureVertical = !measureVertical
-//                    }
-//            )
-            Column(
-                modifier = Modifier.align(Alignment.BottomCenter),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                calculatedDistance?.let {
-                    Text(
-                        modifier = Modifier
-                            .padding(16.dp),
-                        text = it,
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-                if (childNodes.size > 0) {
-                    Button(onClick = {
                         val lastNode = childNodes.last()
                         if (lastNode.name != Constant.POINTER) {
                             if (childNodes.last() is CubeNode) {
@@ -387,12 +285,19 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             // if all nodes are removed then also remove line node
                             childNodes.remove(lineNode)
                         }
-                    }, modifier = Modifier.padding(bottom = 10.dp)) {
-                        Text(text = "Undo")
-                    }
-                }
-                if (centerSphereNode?.isVisible == true) {
-                    Button(onClick = {
+                    },
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .align(Alignment.BottomEnd)
+                )
+            }
+
+            if (!showCoachingOverlay) {
+                ActionButton(
+                    icon = painterResource(R.drawable.vd_add), // Replace with your actual icon
+                    contentDescription = "Add Anchor",
+                    rotationAngle = rotationAngle,
+                    onClick = {
                         // Add marker at center position
                         centerSphereNode?.let { sphere ->
 
@@ -425,13 +330,12 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             }
                             childNodes += newLineNode
                         }
-
-                    }, modifier = Modifier.padding(bottom = 10.dp)) {
-                        Text(text = "Add")
-                    }
-                }
+                    },
+                    modifier = Modifier
+                        .padding(bottom = 10.dp)
+                        .align(Alignment.BottomCenter)
+                )
             }
-
         }
     }
 }
