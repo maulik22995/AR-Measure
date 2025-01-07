@@ -88,7 +88,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
         mutableStateOf<CubeNode>(
             CubeNode(
                 engine,
-                materialInstance = materialLoader.createColorInstance(Color.Cyan)
+                materialInstance = materialLoader.createColorInstance(Color.Yellow)
             )
         )
     }
@@ -150,18 +150,20 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 },
                 onSessionUpdated = { _, updatedFrame ->
                     frame = updatedFrame
-
                     // Only update the pointer when tracking state is TRACKING
                     if (updatedFrame.camera.trackingState == TrackingState.PAUSED) showCoachingOverlay =
                         true
                     if (updatedFrame.camera.trackingState == TrackingState.TRACKING) {
 
                         if (measureVertical) {
-                            updateVerticalMeasuring(
-                                updatedFrame.camera.pose,
-                                childNodes.last(),
-                                centerSphereNode!!
-                            )
+                            if (lastMarkerAnchorNode != null) {
+                                updateVerticalMeasuring(
+                                    updatedFrame.camera.displayOrientedPose,
+                                    lastMarkerAnchorNode!! as AnchorNode,
+                                    centerSphereNode!!,
+                                    arSceneView?.session!!
+                                )
+                            }
                         } else {
                             // Extract the camera's position
                             val hitResults = updatedFrame.hitTest(
@@ -200,7 +202,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                     centerSphereNode = AnchorNode(engine, anchorHit)
                                     centerSphereNode?.name = Constant.POINTER
 
-                                    (centerSphereNode as AnchorNode).addChildNode(sphereNode)
+                                    centerSphereNode?.addChildNode(sphereNode)
 
                                     childNodes += centerSphereNode!!
                                     childNodes += lineNode.apply {
@@ -214,21 +216,21 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                             if (nearbyAnchorNode == null) anchorHit else (nearbyAnchorNode as AnchorNode).anchor
                                     }
                                 }
-
-                                if (lastMarkerAnchorNode != null && centerSphereNode != null) {
-
-                                    if (!childNodes.contains(lineNode)) {
-                                        // check if line node is not being undo and if it is add it back
-                                        childNodes += lineNode
-                                    }
-
-                                    updateLineNode(
-                                        lastMarkerAnchorNode as AnchorNode,
-                                        centerSphereNode!!,
-                                        lineNode
-                                    )
-                                }
                             }
+                        }
+
+                        if (lastMarkerAnchorNode != null && centerSphereNode != null) {
+
+                            if (!childNodes.contains(lineNode)) {
+                                // check if line node is not being undo and if it is add it back
+                                childNodes += lineNode
+                            }
+
+                            updateLineNode(
+                                lastMarkerAnchorNode as AnchorNode,
+                                centerSphereNode!!,
+                                lineNode
+                            )
                         }
                     } else {
                         // Hide or deactivate the pointer if tracking is lost
@@ -255,7 +257,8 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                     measureVertical = !measureVertical
                 },
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .padding(20.dp)
+                    .align(Alignment.BottomStart)
             )
 
             InstructionalOverlay(
@@ -268,7 +271,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 ActionButton(
                     icon = painterResource(R.drawable.vd_undo),
                     contentDescription = "Undo",
-                    rotationAngle = rotationAngle,
+                    rotationAngle = 0f,
                     onClick = {
                         val lastNode = childNodes.last()
                         if (lastNode.name != Constant.POINTER) {
@@ -287,7 +290,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                         }
                     },
                     modifier = Modifier
-                        .padding(10.dp)
+                        .padding(20.dp)
                         .align(Alignment.BottomEnd)
                 )
             }
@@ -296,7 +299,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 ActionButton(
                     icon = painterResource(R.drawable.vd_add), // Replace with your actual icon
                     contentDescription = "Add Anchor",
-                    rotationAngle = rotationAngle,
+                    rotationAngle = 0f,
                     onClick = {
                         // Add marker at center position
                         centerSphereNode?.let { sphere ->
@@ -309,8 +312,10 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                 anchor = sphere.anchor,
                                 kModelFile = "models/pin.glb"
                             )
+//                            newNode.worldPosition = sphere.worldPosition
                             newNode.name = Constant.MARKER
                             childNodes += newNode
+//                            measureVertical = false
 
                         }
                         lastMarkerAnchorNode = childNodes.findLast { it.name == Constant.MARKER }
@@ -332,7 +337,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                         }
                     },
                     modifier = Modifier
-                        .padding(bottom = 10.dp)
+                        .padding(20.dp)
                         .align(Alignment.BottomCenter)
                 )
             }

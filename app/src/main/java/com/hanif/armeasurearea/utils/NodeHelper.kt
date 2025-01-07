@@ -7,6 +7,7 @@ import com.google.ar.core.Anchor
 import com.google.ar.core.Pose
 import com.hanif.armeasurearea.utils.Constant.thresholdDistance
 import dev.romainguy.kotlin.math.Quaternion
+import io.github.sceneview.ar.arcore.ARSession
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.collision.Vector3
@@ -15,6 +16,7 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
+import io.github.sceneview.math.toFloat3
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
@@ -49,7 +51,12 @@ fun calculateTotalDistance(anchorNodes: List<Node>): Float {
     return totalDistance
 }
 
-fun updateVerticalMeasuring(cameraPose: Pose, startNode: Node, pointerNode: Node) {
+fun updateVerticalMeasuring(
+    cameraPose: Pose,
+    startNode: AnchorNode,
+    pointerNode: AnchorNode,
+    session: ARSession
+) {
     val cameraPos = cameraPose.position
     val nodePos = startNode.worldPosition.toVector3()
 
@@ -70,9 +77,12 @@ fun updateVerticalMeasuring(cameraPose: Pose, startNode: Node, pointerNode: Node
         max(0f, cameraToNodeHeightDifference + cameraToNodeDistanceOnPlane * tan(cameraAngle))
 
     val pos = Vector3.add(nodePos, Vector3(0f, height, 0f))
-    pointerNode.worldPosition = pos.toPosition()
-
-//    updateDistance()
+    val newPos =
+        Pose(pos.toFloat3().toFloatArray(), floatArrayOf(0f, 0f, 0f, 0f))
+    val newAnchor = session.createAnchor(newPos)
+    pointerNode.apply {
+        anchor = newAnchor
+    }
 }
 
 fun createLineNode(
@@ -104,7 +114,7 @@ fun updateLineNode(startNode: Node, endNode: Node, lineNode: CubeNode) {
         transform = Transform(
             position = calculateMidPosition(point1Vector3, point2Vector3),
             quaternion = calculateQuaternion(point1, point2),
-            scale = Scale(0.005f, 0.0001f, difference.length())
+            scale = Scale(0.005f, 0.001f, difference.length())
         )
     }
 
