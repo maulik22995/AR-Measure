@@ -44,7 +44,7 @@ fun calculateTotalDistance(anchorNodes: List<Node>): Float {
         val nextPosition = nextNode.worldPosition.toVector3()
 
         // Calculate the distance between the two nodes
-        val distance = Vector3.subtract(nextPosition, currentPosition).length()
+        val distance = Vector3.subtract(currentPosition, nextPosition).length()
         totalDistance += distance
     }
 
@@ -117,8 +117,6 @@ fun updateLineNode(startNode: Node, endNode: Node, lineNode: CubeNode) {
             scale = Scale(0.005f, 0.001f, difference.length())
         )
     }
-
-    Log.e("line updating >>", difference.length().toString())
 }
 
 fun calculateQuaternion(

@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -76,6 +78,12 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
     var showCoachingOverlay by remember { mutableStateOf(true) }
     val modelInstances = remember { mutableListOf<ModelInstance>() }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    val donePointsSize = remember { mutableStateListOf<Int>() }
+    val sumOfDonePoints by remember(donePointsSize) {
+        derivedStateOf {
+            donePointsSize.sum()
+        }
+    }
     var frame by remember { mutableStateOf<Frame?>(null) }
     // Allow resume on rotation
     val rotationAngle by animateFloatAsState(
@@ -84,6 +92,9 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
         label = "rotation" // Animation duration
     )
     val scope = rememberCoroutineScope()
+    val isAbleToDoneOrUndo = remember {
+        derivedStateOf { childNodes.any { it -> it.name == Constant.MARKER } }
+    }
     val lineNode by remember {
         mutableStateOf<CubeNode>(
             CubeNode(
@@ -219,11 +230,11 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             }
                         }
 
-                        if (lastMarkerAnchorNode != null && centerSphereNode != null) {
+                        if (lastMarkerAnchorNode != null && centerSphereNode != null && sumOfDonePoints != childNodes.size) {
 
                             if (!childNodes.contains(lineNode)) {
                                 // check if line node is not being undo and if it is add it back
-                                childNodes += lineNode
+                                childNodes.add(1,lineNode)
                             }
 
                             updateLineNode(
@@ -238,36 +249,58 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 },
             )
 
-            AnimatedVisibility(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .background(Color.Black.copy(alpha = LocalDimens.ARView.OverlayAlpha)),
-                visible = showCoachingOverlay,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                ARCoachingOverlay()
-            }
-
-            ActionButton(
-                icon = painterResource(R.drawable.ic_horizontal_24),
-                contentDescription = "measurement",
-                rotationAngle = rotationAngle,
-                onClick = {
-                    measureVertical = !measureVertical
-                },
-                modifier = Modifier
-                    .padding(20.dp)
-                    .align(Alignment.BottomStart)
-            )
-
             InstructionalOverlay(
                 trackingFailureReason = trackingFailureReason,
                 childNodes = childNodes,
                 calculatedDistance = calculatedDistance
             )
 
-            if (childNodes.isNotEmpty()) {
+            AnimatedVisibility(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = LocalDimens.ARView.OverlayAlpha)),
+                visible = showCoachingOverlay && !measureVertical,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                ARCoachingOverlay()
+            }
+
+            if (isAbleToDoneOrUndo.value && !showCoachingOverlay) {
+
+                if(sumOfDonePoints != childNodes.size){
+                    ActionButton(
+                        icon = painterResource(R.drawable.ic_done),
+                        contentDescription = "done",
+                        rotationAngle = 0f,
+                        onClick = {
+                            Log.e("Done before clicked>>", donePointsSize.toString())
+                            childNodes.remove(lineNode)
+                            lastMarkerAnchorNode = null
+
+                            if (donePointsSize.isNotEmpty()) {
+                                donePointsSize.add(childNodes.size - sumOfDonePoints)
+                            } else {
+                                donePointsSize.add(childNodes.size)
+                            }
+                            Log.e("Done clicked>>", donePointsSize.toString())
+                        },
+                        modifier = Modifier
+                            .padding(15.dp)
+                            .align(Alignment.TopEnd)
+                    )
+                }
+                ActionButton(
+                    icon = painterResource(R.drawable.ic_horizontal_24),
+                    contentDescription = "measurement",
+                    rotationAngle = rotationAngle,
+                    onClick = {
+                        measureVertical = !measureVertical
+                    },
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .align(Alignment.BottomStart)
+                )
                 ActionButton(
                     icon = painterResource(R.drawable.vd_undo),
                     contentDescription = "Undo",
