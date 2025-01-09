@@ -18,7 +18,6 @@ import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
 import io.github.sceneview.math.toFloat3
 import io.github.sceneview.model.ModelInstance
-import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.Node
 import kotlin.math.PI
@@ -62,37 +61,30 @@ fun updateVerticalMeasuring(
     }
 }
 
-fun createLineNode(
-    engine: Engine,
-    anchor1: AnchorNode,
-    anchor2: AnchorNode,
-    materialLoader: MaterialLoader,
-): Node {
-    val point1 = anchor1.worldPosition
-    val point2 = anchor2.worldPosition
-    return drawLineOnPoints(engine, point1, point2, materialLoader)
-
-}
-
-fun updateLineNode(startNode: Node, endNode: Node, lineNode: CubeNode) {
+fun updateLineAnchor(
+    startNode: Node,
+    endNode: Node,
+    lineAnchorNode: AnchorNode,
+    arSession: ARSession
+) {
     val point1 = startNode.worldPosition
     val point2 = endNode.worldPosition
 
     val point1Vector3 = point1.toVector3()
     val point2Vector3 = point2.toVector3()
 
-    val difference = Vector3.subtract(point1Vector3, point2Vector3);
-
-
-    lineNode.apply {
-//        position = calculateMidPosition(point1Vector3, point2Vector3)
-//        quaternion = calculateQuaternion(point1, point2)
-//        scale = Scale(0.01f, 0.0001f, 0.01f)
-        transform = Transform(
-            position = calculateMidPosition(point1Vector3, point2Vector3),
-            quaternion = calculateQuaternion(point1, point2),
-            scale = Scale(0.005f, 0.001f, difference.length())
-        )
+    val difference = Vector3.subtract(point1Vector3, point2Vector3)
+    val newPosition = calculateMidPosition(point1Vector3, point2Vector3)
+    val newQuaternion = calculateQuaternion(point1, point2)
+    val pose = Pose(newPosition.toFloatArray(), newQuaternion.toFloatArray())
+    val newAnchor = arSession.createAnchor(pose)
+    lineAnchorNode.apply {
+        anchor = newAnchor
+        (lineAnchorNode.childNodes.firstOrNull())?.apply {
+            transform = Transform(
+                scale = Scale(0.005f, 0.001f, difference.length())
+            )
+        }
     }
 }
 
@@ -120,28 +112,6 @@ fun calculateQuaternion(
 
 fun calculateMidPosition(point1Vector3: Vector3, point2Vector3: Vector3): Position {
     return Vector3.add(point1Vector3, point2Vector3).scaled(.5f).toPosition()
-}
-
-fun drawLineOnPoints(
-    engine: Engine,
-    point1: Position,
-    point2: Position,
-    materialLoader: MaterialLoader
-): Node {
-    val point1Vector3 = point1.toVector3()
-    val point2Vector3 = point2.toVector3()
-
-    val difference = Vector3.subtract(point1Vector3, point2Vector3);
-
-    val cube = CubeNode(
-        engine,
-        materialInstance = materialLoader.createColorInstance(Color.Yellow)
-    ).apply {
-        position = calculateMidPosition(point1Vector3, point2Vector3)
-        quaternion = calculateQuaternion(point1, point2)
-        scale = Scale(0.01f, 0.0001f, difference.length())
-    }
-    return cube
 }
 
 fun createAnchorNode(
