@@ -28,29 +28,6 @@ import kotlin.math.sqrt
 import kotlin.math.tan
 
 
-fun calculateTotalDistance(anchorNodes: List<Node>): Float {
-    if (anchorNodes.size < 2) {
-        // Not enough nodes to calculate a distance
-        return 0f
-    }
-
-    var totalDistance = 0f
-
-    for (i in 0 until anchorNodes.size - 1) {
-        val currentNode = anchorNodes[i]
-        val nextNode = anchorNodes[i + 1]
-
-        val currentPosition = currentNode.worldPosition.toVector3()
-        val nextPosition = nextNode.worldPosition.toVector3()
-
-        // Calculate the distance between the two nodes
-        val distance = Vector3.subtract(currentPosition, nextPosition).length()
-        totalDistance += distance
-    }
-
-    return totalDistance
-}
-
 fun updateVerticalMeasuring(
     cameraPose: Pose,
     startNode: AnchorNode,
@@ -165,18 +142,6 @@ fun drawLineOnPoints(
         scale = Scale(0.01f, 0.0001f, difference.length())
     }
     return cube
-}
-
-fun calculateDistance(x: Float, y: Float, z: Float): Float {
-    return sqrt(x.pow(2) + y.pow(2) + z.pow(2))
-}
-
-fun changeUnit(distanceMeter: Float, unit: String): Float {
-    return when (unit) {
-        "cm" -> distanceMeter * 100
-        "mm" -> distanceMeter * 1000
-        else -> distanceMeter
-    }
 }
 
 fun createAnchorNode(

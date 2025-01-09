@@ -1,6 +1,5 @@
 package com.hanif.armeasurearea.composables
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.ar.core.TrackingFailureReason
 import com.hanif.armeasurearea.R
+import com.hanif.armeasurearea.utils.changeUnit
+import com.hanif.armeasurearea.utils.roundOffDecimal
 import io.github.sceneview.ar.getDescription
 import io.github.sceneview.node.Node
 
@@ -32,7 +33,8 @@ import io.github.sceneview.node.Node
 fun InstructionalOverlay(
     trackingFailureReason: TrackingFailureReason?,
     childNodes: List<Node>,
-    calculatedDistance: String?
+    calculatedDistance: Float = 0f,
+    calculatedArea: Float = 0f,
 ) {
     val context = LocalContext.current
 
@@ -57,12 +59,32 @@ fun InstructionalOverlay(
             )
         }
 
-        calculatedDistance?.let {
+        if (calculatedDistance > 0f) {
             Spacer(modifier = Modifier.height(16.dp))
             InstructionalCard(
-                text = it,
+                text = "Total Distance: ${
+                    changeUnit(
+                        calculatedDistance.toDouble().roundOffDecimal(),
+                        "cm"
+                    )
+                } cm",
                 modifier = Modifier
-                    .padding(horizontal = 32.dp, /*bottom = 60.dp*/)
+                    .padding(horizontal = 32.dp /*bottom = 60.dp*/)
+            )
+        }
+
+        if (calculatedArea > 0f) {
+            Spacer(modifier = Modifier.height(18.dp))
+            InstructionalCard(
+                text = "Area: ${
+                    changeUnit(
+                        calculatedArea.toDouble().roundOffDecimal(),
+                        "cm²"
+
+                    )
+                } cm²",
+                modifier = Modifier
+                    .padding(horizontal = 32.dp /*bottom = 60.dp*/)
             )
         }
     }
@@ -88,7 +110,7 @@ private fun InstructionalCard(
                 .fillMaxWidth()
                 .padding(16.dp),
             textAlign = TextAlign.Center,
-            fontSize = 20.sp,
+            fontSize = 16.sp,
             color = Color.Black
         )
     }

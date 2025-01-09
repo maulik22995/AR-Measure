@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
@@ -36,6 +38,7 @@ import com.hanif.armeasurearea.composables.InstructionalOverlay
 import com.hanif.armeasurearea.ui.theme.LocalDimens
 import com.hanif.armeasurearea.utils.Constant
 import com.hanif.armeasurearea.utils.calculateAndReturnNearestNode
+import com.hanif.armeasurearea.utils.calculateConvexHullArea
 import com.hanif.armeasurearea.utils.calculateTotalDistance
 import com.hanif.armeasurearea.utils.changeUnit
 import com.hanif.armeasurearea.utils.createAnchorNode
@@ -62,7 +65,8 @@ import io.github.sceneview.rememberView
 @Composable
 fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
     var arSceneView by remember { mutableStateOf<ARSceneView?>(null) }
-    var calculatedDistance by remember { mutableStateOf<String?>(null) }
+    var calculatedDistance by remember { mutableFloatStateOf(0f) }
+    var calculatedArea by remember { mutableFloatStateOf(0f) }
     var centerSphereNode by remember { mutableStateOf<AnchorNode?>(null) }
     var nearbyAnchorNode by remember { mutableStateOf<Node?>(null) }
     var lastMarkerAnchorNode by remember { mutableStateOf<Node?>(null) }
@@ -92,6 +96,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
         label = "rotation" // Animation duration
     )
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val isAbleToDoneOrUndo = remember {
         derivedStateOf { childNodes.any { it -> it.name == Constant.MARKER } }
     }
@@ -108,13 +113,29 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
     LaunchedEffect(childNodes.size) {
         Log.e("childNodes >>", childNodes.size.toString())
         val allAnchorNodes = childNodes.filter { it.name == Constant.MARKER }
-        val totalDistance = calculateTotalDistance(allAnchorNodes)
-        calculatedDistance = "Total Distance: ${
-            changeUnit(
-                totalDistance.toFloat(),
-                "cm"
-            )
-        } cm"
+        calculatedDistance = calculateTotalDistance(allAnchorNodes)
+        val firstMarker = childNodes.find { it.name == Constant.MARKER }
+        val lastMarker = childNodes.lastOrNull() { it.name == Constant.MARKER }
+        if (firstMarker != null && lastMarker != null && firstMarker != lastMarker) {
+            val isLoop = (firstMarker as AnchorNode).anchor == (lastMarker as AnchorNode).anchor
+            if (isLoop) {
+                calculatedArea = calculateConvexHullArea(allAnchorNodes)
+
+                // mark it done to new start
+                childNodes.remove(lineNode)
+                lastMarkerAnchorNode = null
+
+                if (donePointsSize.isNotEmpty()) {
+                    donePointsSize.add(childNodes.size - sumOfDonePoints)
+                } else {
+                    donePointsSize.add(childNodes.size)
+                }
+            }else {
+                calculatedArea = 0f
+            }
+        }
+
+
     }
 
     Box(contentAlignment = Alignment.BottomCenter, modifier = Modifier.padding(innerPadding)) {
@@ -234,7 +255,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
 
                             if (!childNodes.contains(lineNode)) {
                                 // check if line node is not being undo and if it is add it back
-                                childNodes.add(1,lineNode)
+                                childNodes.add(1, lineNode)
                             }
 
                             updateLineNode(
@@ -252,7 +273,8 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
             InstructionalOverlay(
                 trackingFailureReason = trackingFailureReason,
                 childNodes = childNodes,
-                calculatedDistance = calculatedDistance
+                calculatedDistance = calculatedDistance,
+                calculatedArea = calculatedArea
             )
 
             AnimatedVisibility(
@@ -268,28 +290,28 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
 
             if (isAbleToDoneOrUndo.value && !showCoachingOverlay) {
 
-                if(sumOfDonePoints != childNodes.size){
-                    ActionButton(
-                        icon = painterResource(R.drawable.ic_done),
-                        contentDescription = "done",
-                        rotationAngle = 0f,
-                        onClick = {
-                            Log.e("Done before clicked>>", donePointsSize.toString())
-                            childNodes.remove(lineNode)
-                            lastMarkerAnchorNode = null
-
-                            if (donePointsSize.isNotEmpty()) {
-                                donePointsSize.add(childNodes.size - sumOfDonePoints)
-                            } else {
-                                donePointsSize.add(childNodes.size)
-                            }
-                            Log.e("Done clicked>>", donePointsSize.toString())
-                        },
-                        modifier = Modifier
-                            .padding(15.dp)
-                            .align(Alignment.TopEnd)
-                    )
-                }
+//                if (sumOfDonePoints != childNodes.size) {
+//                    ActionButton(
+//                        icon = painterResource(R.drawable.ic_done),
+//                        contentDescription = "done",
+//                        rotationAngle = 0f,
+//                        onClick = {
+//                            Log.e("Done before clicked>>", donePointsSize.toString())
+//                            childNodes.remove(lineNode)
+//                            lastMarkerAnchorNode = null
+//
+//                            if (donePointsSize.isNotEmpty()) {
+//                                donePointsSize.add(childNodes.size - sumOfDonePoints)
+//                            } else {
+//                                donePointsSize.add(childNodes.size)
+//                            }
+//                            Log.e("Done clicked>>", donePointsSize.toString())
+//                        },
+//                        modifier = Modifier
+//                            .padding(15.dp)
+//                            .align(Alignment.TopEnd)
+//                    )
+//                }
                 ActionButton(
                     icon = painterResource(R.drawable.ic_horizontal_24),
                     contentDescription = "measurement",
