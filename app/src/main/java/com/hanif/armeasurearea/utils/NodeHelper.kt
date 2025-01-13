@@ -18,6 +18,7 @@ import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
 import io.github.sceneview.math.toFloat3
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.Node
 import kotlin.math.PI
@@ -55,6 +56,43 @@ fun updateVerticalMeasuring(
     val pos = Vector3.add(nodePos, Vector3(0f, height, 0f))
     val newPos =
         Pose(pos.toFloat3().toFloatArray(), floatArrayOf(0f, 0f, 0f, 0f))
+    val newAnchor = session.createAnchor(newPos)
+    pointerNode.apply {
+        anchor = newAnchor
+    }
+}
+
+fun updateVerticalCubeMeasuring(
+    cameraPose: Pose,
+    startNode: AnchorNode,
+    pointerNode: AnchorNode,
+    session: ARSession
+) {
+    val cameraPos = cameraPose.position
+    val nodePos = startNode.worldPosition.toVector3()
+
+
+    Log.e("updateVerticalCubeMeasuring >>",cameraPos.toString())
+
+    val cameraToNodeHeightDifference = cameraPos.y - nodePos.y
+    val cameraToNodeDistanceOnPlane =
+        sqrt((cameraPos.x - nodePos.x).pow(2) + (cameraPos.z - nodePos.z).pow(2))
+    val cameraAngle = cameraPose.pitch
+
+    val normalizedCameraAngle = normalizeRadians(cameraAngle.toDouble(), -PI)
+    val pi2 = PI / 2
+    if (normalizedCameraAngle < -pi2 * 2 / 3 || normalizedCameraAngle > +pi2 * 1 / 2) {
+        Log.e(">>", "Too steep of an angle, step away a bit")
+        return
+    }
+
+    // don't allow negative heights (into the ground)
+    val height =
+        max(0f, cameraToNodeHeightDifference +  tan(cameraAngle))
+
+    val pos = Vector3.add(nodePos, Vector3(0f, height , 0f))
+    val newPos =
+        Pose(pos.toFloat3().toFloatArray(), pointerNode.quaternion.toFloatArray())
     val newAnchor = session.createAnchor(newPos)
     pointerNode.apply {
         anchor = newAnchor
@@ -181,4 +219,99 @@ fun calculateAndReturnNearestNode(childNodes: List<Node>, anchorHit: Anchor): No
                 false
             }
         }
+}
+
+fun createNewLineNode(
+    engine: Engine,
+    anchor: Anchor,
+    linNode: AnchorNode,
+    materialLoader: MaterialLoader
+): AnchorNode {
+    val newNode = AnchorNode(engine, anchor)
+    newNode.apply {
+        name = Constant.LINE
+        val newLineNode = CubeNode(
+            engine,
+            materialInstance = materialLoader.createColorInstance(
+                Color.Cyan
+            )
+        ).apply {
+            transform = linNode.childNodes.first().transform
+            name = Constant.LINE
+        }
+        addChildNode(newLineNode)
+    }
+    return newNode
+}
+
+fun createMarkerPointNode(
+    engine: Engine,
+    materialLoader: MaterialLoader,
+    anchor: Anchor
+): AnchorNode {
+    val anchorNode = AnchorNode(engine = engine, anchor = anchor)
+    val sphereNode = CylinderNode(
+        engine = engine,
+        radius = 0.010f, // Sphere radius
+        height = 0.005f, // Sphere height
+        materialInstance = materialLoader.createColorInstance(Color.Blue)
+    )
+    anchorNode.addChildNode(sphereNode)
+    anchorNode.name = Constant.MARKER
+    return anchorNode
+}
+
+fun createReplicatedListForHeight(
+    engine: Engine, materialLoader: MaterialLoader,
+    nodes: List<Node>,
+    session: ARSession
+): List<AnchorNode> {
+    val updatedList = ArrayList<AnchorNode>()
+    nodes.forEachIndexed { index, anchorNode ->
+
+        if (anchorNode.name == Constant.MARKER) {
+            val newAnchor = createNewAnchor(
+                session,
+                Position(
+                    anchorNode.worldPosition.x,
+                    anchorNode.worldPosition.y + 0.05f,
+                    anchorNode.worldPosition.z
+                ), anchorNode.quaternion
+            )
+            val newPointNode =
+                createMarkerPointNode(engine, materialLoader, newAnchor)
+            updatedList.add(newPointNode)
+
+            // create vertical line
+            val newVerticalLineNode =
+                createNewLineNode(engine, newAnchor, anchorNode as AnchorNode, materialLoader)
+            updateLineAnchor(anchorNode, newPointNode, newVerticalLineNode, session)
+            updatedList.add(newVerticalLineNode)
+
+        } else if (anchorNode.name == Constant.LINE) {
+            val newAnchor = createNewAnchor(
+                session,
+                Position(
+                    anchorNode.worldPosition.x,
+                    anchorNode.worldPosition.y + 0.05f,
+                    anchorNode.worldPosition.z
+                ), anchorNode.quaternion
+            )
+            val newLineNode =
+                createNewLineNode(engine, newAnchor, anchorNode as AnchorNode, materialLoader)
+            updatedList.add(newLineNode)
+        }
+
+    }
+    return updatedList
+}
+
+fun createNewAnchor(
+    arSession: ARSession,
+    newPosition: Position,
+    newQuaternion: Quaternion
+): Anchor {
+    val pose = Pose(newPosition.toFloatArray(), newQuaternion.toFloatArray())
+    val newAnchor = arSession.createAnchor(pose)
+    return newAnchor
 }
