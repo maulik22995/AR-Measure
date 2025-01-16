@@ -20,12 +20,10 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
@@ -55,7 +53,6 @@ import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
-import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.Node
@@ -84,20 +81,13 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
     val view = rememberView(engine)
     val collisionSystem = rememberCollisionSystem(view)
     val planeRenderer by remember { mutableStateOf(true) }
-    var measureVertical by remember { mutableStateOf(false) }
+    val measureVertical by remember { mutableStateOf(false) }
     var showCoachingOverlay by remember { mutableStateOf(true) }
     var loopDetected by remember { mutableStateOf(false) }
     var isCubeMode by remember { mutableStateOf(false) }
-    var currentCubeHandlingPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-    var currentFloorCubeHandlingPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-    val modelInstances = remember { mutableListOf<ModelInstance>() }
+    val listOfFloorCubeHandlingPos = remember { mutableStateListOf<Pair<Int, Int>>() }
+    val listOfRoofCubeHandlingPos = remember { mutableStateListOf<Pair<Int, Int>>() }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
-    val donePointsSize = remember { mutableStateListOf<Int>() }
-    val sumOfDonePoints by remember(donePointsSize) {
-        derivedStateOf {
-            donePointsSize.sum()
-        }
-    }
     var frame by remember { mutableStateOf<Frame?>(null) }
     // Allow resume on rotation
     val rotationAngle by animateFloatAsState(
@@ -105,8 +95,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
         animationSpec = tween(durationMillis = 300),
         label = "rotation" // Animation duration
     )
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val isAbleToDoneOrUndo = remember {
         derivedStateOf { childNodes.any { it -> it.name == Constant.MARKER } }
     }
@@ -121,11 +109,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
 
     // Update the distance dynamically
     LaunchedEffect(childNodes.size) {
-
-//        childNodes.forEach {
-//            Log.e("child >>", it.name.toString())
-//        }
-//        Log.e("child size >>", childNodes.size.toString())
         val allAnchorNodes = childNodes.filter { it.name == Constant.MARKER }
         calculatedDistance = calculateTotalDistance(allAnchorNodes)
 
@@ -188,31 +171,45 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                     if (updatedFrame.camera.trackingState == TrackingState.PAUSED) showCoachingOverlay =
                         true
                     if (updatedFrame.camera.trackingState == TrackingState.TRACKING) {
-                        if(isCubeMode && currentCubeHandlingPos != null && currentFloorCubeHandlingPos != null && arSceneView?.session != null){
-                            val floorChildChunked = childNodes.subList(currentFloorCubeHandlingPos!!.first,currentFloorCubeHandlingPos!!.second)
-                            val unFloorChildChunked = childNodes.subList(currentCubeHandlingPos!!.first,currentCubeHandlingPos!!.second)
+                        if (isCubeMode && listOfRoofCubeHandlingPos.isNotEmpty() && arSceneView?.session != null && listOfFloorCubeHandlingPos.isNotEmpty()) {
 
+                            val lastCreatedFloor = listOfFloorCubeHandlingPos.last()
+                            val lastCreatedRoof = listOfRoofCubeHandlingPos.last()
 
-//                            Log.e("floorChildChunked name >>",floorChildChunked.first().name.toString())
-//                            Log.e("floorChildChunked inner >>",floorChildChunked.size.toString())
-//                            Log.e("unFloorChildChunked name >>",unFloorChildChunked.first().name.toString())
-//                            Log.e("unFloorChildChunked outer >>",unFloorChildChunked.size.toString())
+                            val floorChildChunked = childNodes.subList(
+                                lastCreatedFloor.first,
+                                lastCreatedFloor.second
+                            )
+                            val unFloorChildChunked = childNodes.subList(
+                                lastCreatedRoof.first,
+                                lastCreatedRoof.second
+                            )
 
+                            /**
+                             * FloorChild are string in combination of  [MARKER,LINE...]
+                             */
                             val floorChild = floorChildChunked.chunked(2)
+
+                            /**
+                             * UnFloorChild or Roof/Height child are string in combination of  [MARKER,LINE(Vertical height connecting line),LINE...]
+                             */
                             val unFloorChild = unFloorChildChunked.chunked(3)
 
-                            if(floorChild.size == unFloorChild.size){
+                            if (floorChild.size == unFloorChild.size) {
                                 floorChild.forEachIndexed { index, floorNodes ->
-
-//                                    Log.e("floorChild inner >>",floorNodes.size.toString())
-//                                    Log.e("unFloorChild outer >>",unFloorChild[index].size.toString())
+                                    /**
+                                     * Draw and update roof Marker points with camera movement vertically
+                                     */
                                     updateVerticalCubeMeasuring(
                                         updatedFrame.camera.displayOrientedPose,
-                                        floorNodes[0] as AnchorNode,
-                                        unFloorChild[index][0] as AnchorNode,
+                                        floorNodes.first() as AnchorNode,
+                                        unFloorChild[index].first() as AnchorNode,
                                         arSceneView?.session!!
                                     )
 
+                                    /**
+                                     * Draw and update roof Lines between Marker points with camera movement vertically
+                                     */
                                     updateVerticalCubeMeasuring(
                                         updatedFrame.camera.displayOrientedPose,
                                         floorNodes[1] as AnchorNode,
@@ -220,6 +217,9 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                         arSceneView?.session!!
                                     )
 
+                                    /**
+                                     * Draw and update vertical lines between roof and floor points with camera movement vertically
+                                     */
                                     updateLineAnchor(
                                         floorNodes[0] as AnchorNode,
                                         unFloorChild[index][0],
@@ -230,7 +230,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             }
 
 
-                        }else if (measureVertical) {
+                        } else if (measureVertical) {
                             if (lastMarkerAnchorNode != null) {
                                 updateVerticalMeasuring(
                                     updatedFrame.camera.displayOrientedPose,
@@ -322,6 +322,9 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 },
             )
 
+            /**
+             * Showing instruction on screen for ANY ERROR while detecting planes
+             */
             InstructionalOverlay(
                 trackingFailureReason = trackingFailureReason,
                 childNodes = childNodes,
@@ -329,6 +332,9 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 calculatedArea = calculatedArea
             )
 
+            /**
+             * Animated view for showing guides to do plane detection
+             */
             AnimatedVisibility(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -340,8 +346,14 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                 ARCoachingOverlay()
             }
 
-            if (isAbleToDoneOrUndo.value && !showCoachingOverlay) {
+            /**
+             * Action buttons Add,undo,make roof cube, done etc
+             */
+            if (!showCoachingOverlay) {
 
+                /**
+                 * All top action buttons
+                 */
                 Row(
                     modifier = Modifier
                         .padding(15.dp)
@@ -354,137 +366,149 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             rotationAngle = 0f,
                             onClick = {
                                 isCubeMode = true
-                                arSceneView?.session?.let {
-                                    val replicatedNodes = createReplicatedListForHeight(
-                                        engine,
-                                        materialLoader,
-                                        childNodes.filter { it.name == Constant.MARKER || it.name == Constant.LINE },
-                                        it
-                                    )
+                                if (listOfFloorCubeHandlingPos.isNotEmpty()) {
+                                    arSceneView?.session?.let {
+                                        val lastLoop = listOfFloorCubeHandlingPos.last()
+                                        val replicatedNodes = createReplicatedListForHeight(
+                                            engine,
+                                            materialLoader,
+                                            childNodes.subList(lastLoop.first, lastLoop.second),
+                                            it
+                                        )
 
-                                    currentFloorCubeHandlingPos = Pair(2,childNodes.size)
-                                    Log.e("currentFloorCubeHandlingPos >>",currentFloorCubeHandlingPos.toString())
-
-                                    val startIndex = childNodes.size
-                                    childNodes.addAll(replicatedNodes)
-                                    currentCubeHandlingPos = Pair(startIndex, childNodes.size)
-
-                                    Log.e("currentCubeHandlingPos >>",currentCubeHandlingPos.toString())
+                                        val startIndex = childNodes.size
+                                        childNodes.addAll(replicatedNodes)
+                                        listOfRoofCubeHandlingPos.add(
+                                            Pair(
+                                                startIndex,
+                                                childNodes.size
+                                            )
+                                        )
+                                    }
                                 }
 
                             },
                             modifier = Modifier
                                 .padding(horizontal = 5.dp)
                         )
-                        if (isCubeMode) {
-                            ActionButton(
-                                icon = painterResource(R.drawable.ic_done),
-                                contentDescription = "done",
-                                rotationAngle = 0f,
-                                onClick = {
-                                    isCubeMode = false
-                                    currentCubeHandlingPos = null
-                                    currentFloorCubeHandlingPos = null
-                                },
-                                modifier = Modifier
-                                    .padding(horizontal = 5.dp)
-                            )
-                        }
+                    }
+
+                    if (isCubeMode) {
+                        ActionButton(
+                            icon = painterResource(R.drawable.ic_done),
+                            contentDescription = "done",
+                            rotationAngle = 0f,
+                            onClick = {
+                                loopDetected = false
+                                isCubeMode = false
+                            },
+                            modifier = Modifier
+                                .padding(horizontal = 5.dp)
+                        )
                     }
                 }
 
-                ActionButton(
-                    icon = painterResource(R.drawable.ic_horizontal_24),
-                    contentDescription = "measurement",
-                    rotationAngle = rotationAngle,
-                    onClick = {
-                        measureVertical = !measureVertical
-                    },
-                    modifier = Modifier
-                        .padding(20.dp)
-                        .align(Alignment.BottomStart)
-                )
-                ActionButton(
-                    icon = painterResource(R.drawable.vd_undo),
-                    contentDescription = "Undo",
-                    rotationAngle = 0f,
-                    onClick = {
-                        loopDetected = false
-                        val lastNode = childNodes.last()
-                        if (lastNode.name != Constant.POINTER) {
-                            if (childNodes.last().name == Constant.LINE) {
-                                childNodes.removeLastOrNull()
-                            } else {
-                                if (childNodes.last().name != Constant.POINTER) {
-                                    childNodes.removeLastOrNull()
-                                }
+                /**
+                 * All bottom action buttons
+                 */
+                if (!isCubeMode) {
+//                    ActionButton(
+//                        icon = painterResource(R.drawable.ic_horizontal_24),
+//                        contentDescription = "measurement",
+//                        rotationAngle = rotationAngle,
+//                        onClick = {
+//                            measureVertical = !measureVertical
+//                        },
+//                        modifier = Modifier
+//                            .padding(20.dp)
+//                            .align(Alignment.BottomStart)
+//                    )
+                    if (isAbleToDoneOrUndo.value) {
+                        ActionButton(
+                            icon = painterResource(R.drawable.vd_undo),
+                            contentDescription = "Undo",
+                            rotationAngle = 0f,
+                            onClick = {
+                                loopDetected = false
+                                val lastNode = childNodes.last()
+                                if (lastNode.name != Constant.POINTER) {
+                                    if (childNodes.last().name == Constant.LINE) {
+                                        childNodes.removeLastOrNull()
+                                    } else {
+                                        if (childNodes.last().name != Constant.POINTER) {
+                                            childNodes.removeLastOrNull()
+                                        }
 
-                                if (childNodes.last().name == Constant.LINE) {
-                                    childNodes.removeLastOrNull()
+                                        if (childNodes.last().name == Constant.LINE) {
+                                            childNodes.removeLastOrNull()
+                                        }
+                                    }
+
+                                }
+                                lastMarkerAnchorNode =
+                                    childNodes.findLast { it.name == Constant.MARKER }
+
+                                if (lastMarkerAnchorNode == null) {
+                                    // if all nodes are removed then also remove line node from anchor
+                                    lineAnchorNode?.removeChildNode(lineNode)
+                                }
+                            },
+                            modifier = Modifier
+                                .padding(20.dp)
+                                .align(Alignment.BottomEnd)
+                        )
+                    }
+
+                    ActionButton(
+                        icon = painterResource(R.drawable.vd_add), // Replace with your actual icon
+                        contentDescription = "Add Anchor",
+                        rotationAngle = 0f,
+                        onClick = {
+                            //create line
+                            if (lastMarkerAnchorNode != null) {
+                                lineAnchorNode?.let { lineAnchor ->
+                                    if (lineAnchor.childNodes.contains(lineNode)) {
+                                        val newNode =
+                                            createNewLineNode(
+                                                engine,
+                                                lineAnchor.anchor,
+                                                lineAnchor,
+                                                materialLoader,
+                                            )
+                                        childNodes += newNode
+                                    }
+
                                 }
                             }
 
-                        }
-                        lastMarkerAnchorNode = childNodes.findLast { it.name == Constant.MARKER }
+                            // add point
+                            if (nearbyAnchorNode == null) {
+                                loopDetected = false
+                                centerSphereNode?.let { sphere ->
 
-                        if (lastMarkerAnchorNode == null) {
-                            // if all nodes are removed then also remove line node from anchor
-                            lineAnchorNode?.removeChildNode(lineNode)
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(20.dp)
-                        .align(Alignment.BottomEnd)
-                )
-            }
-
-            if (!showCoachingOverlay) {
-                ActionButton(
-                    icon = painterResource(R.drawable.vd_add), // Replace with your actual icon
-                    contentDescription = "Add Anchor",
-                    rotationAngle = 0f,
-                    onClick = {
-                        //create line
-                        if (lastMarkerAnchorNode != null) {
-                            lineAnchorNode?.let { lineAnchor ->
-                                if (lineAnchor.childNodes.contains(lineNode)) {
-                                    val newNode =
-                                        createNewLineNode(
-                                            engine,
-                                            lineAnchor.anchor,
-                                            lineAnchor,
-                                            materialLoader,
-                                        )
+                                    val newNode = createMarkerPointNode(
+                                        engine = engine,
+                                        materialLoader = materialLoader,
+                                        anchor = sphere.anchor,
+                                    )
                                     childNodes += newNode
                                 }
-
+                            } else {
+                                loopDetected = true
+                                val startPosition = childNodes.indexOf(nearbyAnchorNode)
+                                listOfFloorCubeHandlingPos.add(Pair(startPosition, childNodes.size))
                             }
-                        }
 
-                        // add point
-                        if (nearbyAnchorNode == null) {
-                            loopDetected = false
-                            centerSphereNode?.let { sphere ->
+                            //update last added point
+                            lastMarkerAnchorNode =
+                                childNodes.findLast { it.name == Constant.MARKER }
 
-                                val newNode = createMarkerPointNode(
-                                    engine = engine,
-                                    materialLoader = materialLoader,
-                                    anchor = sphere.anchor,
-                                )
-                                childNodes += newNode
-                            }
-                        } else {
-                            loopDetected = true
-                        }
-
-                        //update last added point
-                        lastMarkerAnchorNode = childNodes.findLast { it.name == Constant.MARKER }
-
-                    },
-                    modifier = Modifier
-                        .padding(20.dp)
-                        .align(Alignment.BottomCenter)
-                )
+                        },
+                        modifier = Modifier
+                            .padding(20.dp)
+                            .align(Alignment.BottomCenter)
+                    )
+                }
             }
         }
     }
