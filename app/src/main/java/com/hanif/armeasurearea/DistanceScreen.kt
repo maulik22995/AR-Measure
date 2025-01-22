@@ -42,7 +42,10 @@ import com.hanif.armeasurearea.utils.calculateTotalDistance
 import com.hanif.armeasurearea.utils.createMarkerPointNode
 import com.hanif.armeasurearea.utils.createNewLineNode
 import com.hanif.armeasurearea.utils.createReplicatedListForHeight
+import com.hanif.armeasurearea.utils.findStartEndForIndex
+import com.hanif.armeasurearea.utils.isIndexEqualToStartOrEnd
 import com.hanif.armeasurearea.utils.updateLineAnchor
+import com.hanif.armeasurearea.utils.updateLinesAnchor
 import com.hanif.armeasurearea.utils.updateVerticalCubeMeasuring
 import com.hanif.armeasurearea.utils.updateVerticalMeasuring
 import io.github.sceneview.ar.ARScene
@@ -61,6 +64,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberNodes
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
 
 
@@ -165,6 +169,60 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                     showCoachingOverlay = it != null
                     trackingFailureReason = it
                 },
+
+                onGestureListener = rememberOnGestureListener(
+                    onMove = { detector, e, node ->
+                        if (loopDetected) {
+                            val endNode = childNodes.indexOf(node?.parent)
+                            if (node != null && endNode != -1 && node.parent?.name == Constant.MARKER) {
+                                arSceneView?.session?.let {
+                                    val result =
+                                        listOfFloorCubeHandlingPos.isIndexEqualToStartOrEnd(endNode)
+                                    if (result) {
+                                        Log.e("TAG", "DistanceScreen: Start", )
+                                        listOfFloorCubeHandlingPos.findStartEndForIndex(endNode)
+                                            ?.let { pair ->
+                                                updateLinesAnchor(
+                                                    startNode = childNodes[endNode + 2],
+                                                    centerNode = childNodes[endNode],
+                                                    endNode = childNodes[pair.second - 1],
+                                                    line1AnchorNode = childNodes[endNode + 1] as AnchorNode,
+                                                    line2AnchorNode = childNodes[pair.second] as AnchorNode,
+                                                    it
+                                                )
+                                            }
+                                    } else {
+                                        listOfFloorCubeHandlingPos.findStartEndForIndex(endNode)
+                                            ?.let { pair ->
+                                                if (endNode == (pair.second - 1)) {
+                                                    Log.e("TAG", "DistanceScreen: End", )
+                                                    updateLinesAnchor(
+                                                        startNode = childNodes[endNode - 2],
+                                                        centerNode = childNodes[endNode],
+                                                        endNode = childNodes[pair.first],
+                                                        line1AnchorNode = childNodes[endNode - 1] as AnchorNode,
+                                                        line2AnchorNode = childNodes[endNode + 1] as AnchorNode,
+                                                        it
+                                                    )
+                                                } else {
+                                                    Log.e("TAG", "DistanceScreen: Mid", )
+
+                                                    updateLinesAnchor(
+                                                        startNode = childNodes[endNode - 2],
+                                                        centerNode = childNodes[endNode],
+                                                        endNode = childNodes[endNode + 2],
+                                                        line1AnchorNode = childNodes[endNode - 1] as AnchorNode,
+                                                        line2AnchorNode = childNodes[endNode + 1] as AnchorNode,
+                                                        it
+                                                    )
+                                                }
+                                            }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                ),
                 onSessionUpdated = { _, updatedFrame ->
                     frame = updatedFrame
                     // Only update the pointer when tracking state is TRACKING
@@ -496,7 +554,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             } else {
                                 loopDetected = true
                                 val startPosition = childNodes.indexOf(nearbyAnchorNode)
-                                listOfFloorCubeHandlingPos.add(Pair(startPosition, childNodes.size))
+                                listOfFloorCubeHandlingPos.add(Pair(startPosition, childNodes.size-1))
                             }
 
                             //update last added point

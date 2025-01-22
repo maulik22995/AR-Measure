@@ -126,6 +126,56 @@ fun updateLineAnchor(
     }
 }
 
+
+fun updateLinesAnchor(
+    startNode: Node,
+    centerNode: Node,
+    endNode: Node,
+    line1AnchorNode: AnchorNode,
+    line2AnchorNode: AnchorNode,
+    arSession: ARSession
+) {
+    try {
+        val point1 = startNode.worldPosition
+        val point2 = centerNode.worldPosition
+        val point3 = endNode.worldPosition
+
+        val point1Vector3 = point1.toVector3()
+        val point2Vector3 = point2.toVector3()
+        val point3Vector3 = point3.toVector3()
+
+        val difference = Vector3.subtract(point1Vector3, point2Vector3)
+        val difference1 = Vector3.subtract(point2Vector3, point3Vector3)
+        val newPosition = calculateMidPosition(point1Vector3, point2Vector3)
+        val newPosition1 = calculateMidPosition(point2Vector3, point3Vector3)
+        val newQuaternion = calculateQuaternion(point1, point2)
+        val newQuaternion1 = calculateQuaternion(point2, point3)
+        val pose = Pose(newPosition.toFloatArray(), newQuaternion.toFloatArray())
+        val pose1 = Pose(newPosition1.toFloatArray(), newQuaternion1.toFloatArray())
+        val newAnchor = arSession.createAnchor(pose)
+        val newAnchor1 = arSession.createAnchor(pose1)
+        line1AnchorNode.apply {
+            anchor = newAnchor
+            (this.childNodes.firstOrNull())?.apply {
+                transform = Transform(
+                    scale = Scale(0.005f, 0.001f, difference.length())
+                )
+            }
+        }
+        line2AnchorNode.apply {
+            anchor = newAnchor1
+            (this.childNodes.firstOrNull())?.apply {
+                transform = Transform(
+                    scale = Scale(0.005f, 0.001f, difference1.length())
+                )
+            }
+        }
+    } catch (e: Exception) {
+        Log.e("TAG", "DistanceScreen: $e")
+    }
+}
+
+
 fun calculateQuaternion(
     point1: Position,
     point2: Position
@@ -236,6 +286,8 @@ fun createNewLineNode(
                 Color.Cyan
             )
         ).apply {
+            isEditable = false
+            isTouchable = false
             transform = linNode.childNodes.first().transform
             name = Constant.LINE
         }
@@ -255,7 +307,9 @@ fun createMarkerPointNode(
         radius = 0.010f, // Sphere radius
         height = 0.005f, // Sphere height
         materialInstance = materialLoader.createColorInstance(Color.Blue)
-    )
+    ).apply {
+        editableScaleRange  = 0.1f..100.0f
+    }
     anchorNode.addChildNode(sphereNode)
     anchorNode.name = Constant.MARKER
     return anchorNode
@@ -314,4 +368,17 @@ fun createNewAnchor(
     val pose = Pose(newPosition.toFloatArray(), newQuaternion.toFloatArray())
     val newAnchor = arSession.createAnchor(pose)
     return newAnchor
+}
+
+
+fun List<Pair<Int, Int>>.isIndexEqualToStartOrEnd(index: Int): Boolean {
+    return this.reversed().any { (start, end) ->
+        index == start || index == end
+    }
+}
+
+fun List<Pair<Int, Int>>.findStartEndForIndex(index: Int): Pair<Int, Int>? {
+    return this.find { (start, end) ->
+        index in start..end
+    }
 }
