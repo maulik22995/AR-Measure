@@ -308,7 +308,7 @@ fun createMarkerPointNode(
         height = 0.005f, // Sphere height
         materialInstance = materialLoader.createColorInstance(Color.Blue)
     ).apply {
-        editableScaleRange  = 0.1f..100.0f
+        editableScaleRange  = 0.1f..500.0f
     }
     anchorNode.addChildNode(sphereNode)
     anchorNode.name = Constant.MARKER

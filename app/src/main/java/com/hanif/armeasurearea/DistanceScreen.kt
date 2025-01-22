@@ -179,7 +179,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                     val result =
                                         listOfFloorCubeHandlingPos.isIndexEqualToStartOrEnd(endNode)
                                     if (result) {
-                                        Log.e("TAG", "DistanceScreen: Start", )
                                         listOfFloorCubeHandlingPos.findStartEndForIndex(endNode)
                                             ?.let { pair ->
                                                 updateLinesAnchor(
@@ -195,7 +194,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                         listOfFloorCubeHandlingPos.findStartEndForIndex(endNode)
                                             ?.let { pair ->
                                                 if (endNode == (pair.second - 1)) {
-                                                    Log.e("TAG", "DistanceScreen: End", )
                                                     updateLinesAnchor(
                                                         startNode = childNodes[endNode - 2],
                                                         centerNode = childNodes[endNode],
@@ -205,8 +203,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                                         it
                                                     )
                                                 } else {
-                                                    Log.e("TAG", "DistanceScreen: Mid", )
-
                                                     updateLinesAnchor(
                                                         startNode = childNodes[endNode - 2],
                                                         centerNode = childNodes[endNode],
@@ -236,7 +232,7 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
 
                             val floorChildChunked = childNodes.subList(
                                 lastCreatedFloor.first,
-                                lastCreatedFloor.second
+                                lastCreatedFloor.second + 1
                             )
                             val unFloorChildChunked = childNodes.subList(
                                 lastCreatedRoof.first,
@@ -427,10 +423,11 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                 if (listOfFloorCubeHandlingPos.isNotEmpty()) {
                                     arSceneView?.session?.let {
                                         val lastLoop = listOfFloorCubeHandlingPos.last()
+                                        val nodes = childNodes.subList(lastLoop.first, lastLoop.second + 1)
                                         val replicatedNodes = createReplicatedListForHeight(
                                             engine,
                                             materialLoader,
-                                            childNodes.subList(lastLoop.first, lastLoop.second),
+                                            nodes,
                                             it
                                         )
 
@@ -554,7 +551,13 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                             } else {
                                 loopDetected = true
                                 val startPosition = childNodes.indexOf(nearbyAnchorNode)
-                                listOfFloorCubeHandlingPos.add(Pair(startPosition, childNodes.size-1))
+                                val endPosition = childNodes.size
+                                listOfFloorCubeHandlingPos.add(
+                                    Pair(
+                                        startPosition,
+                                        endPosition - 1
+                                    )
+                                )
                             }
 
                             //update last added point
