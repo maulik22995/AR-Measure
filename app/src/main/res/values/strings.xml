@@ -2,4 +2,8 @@
     <string name="app_name">AR Measure Area</string>
     <string name="point_your_phone_down">Point your phone down at an empty space, and move it around slowly</string>
     <string name="tap_anywhere_to_add_model">Tap anywhere to add model</string>
+    <string name="add_points">Tap on add button for put points to measures area.</string>
+    <string name="message_scan_horizontal_plane">Scan horizontal plane</string>
+    <string name="message_scan_vertical_plane">Scan vertical plane</string>
+    <string name="message_scan_any_plane">Scan any plane surface</string>
 </resources>
