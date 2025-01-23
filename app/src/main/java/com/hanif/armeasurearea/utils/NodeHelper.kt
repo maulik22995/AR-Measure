@@ -18,6 +18,7 @@ import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Transform
 import io.github.sceneview.math.toFloat3
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.Node
 import kotlin.math.PI
@@ -61,6 +62,43 @@ fun updateVerticalMeasuring(
     }
 }
 
+fun updateVerticalCubeMeasuring(
+    cameraPose: Pose,
+    startNode: AnchorNode,
+    pointerNode: AnchorNode,
+    session: ARSession
+) {
+    val cameraPos = cameraPose.position
+    val nodePos = startNode.worldPosition.toVector3()
+
+
+    Log.e("updateVerticalCubeMeasuring >>",cameraPos.toString())
+
+    val cameraToNodeHeightDifference = cameraPos.y - nodePos.y
+    val cameraToNodeDistanceOnPlane =
+        sqrt((cameraPos.x - nodePos.x).pow(2) + (cameraPos.z - nodePos.z).pow(2))
+    val cameraAngle = cameraPose.pitch
+
+    val normalizedCameraAngle = normalizeRadians(cameraAngle.toDouble(), -PI)
+    val pi2 = PI / 2
+    if (normalizedCameraAngle < -pi2 * 2 / 3 || normalizedCameraAngle > +pi2 * 1 / 2) {
+        Log.e(">>", "Too steep of an angle, step away a bit")
+        return
+    }
+
+    // don't allow negative heights (into the ground)
+    val height =
+        max(0f, cameraToNodeHeightDifference +  tan(cameraAngle))
+
+    val pos = Vector3.add(nodePos, Vector3(0f, height , 0f))
+    val newPos =
+        Pose(pos.toFloat3().toFloatArray(), pointerNode.quaternion.toFloatArray())
+    val newAnchor = session.createAnchor(newPos)
+    pointerNode.apply {
+        anchor = newAnchor
+    }
+}
+
 fun updateLineAnchor(
     startNode: Node,
     endNode: Node,
@@ -87,6 +125,56 @@ fun updateLineAnchor(
         }
     }
 }
+
+
+fun updateLinesAnchor(
+    startNode: Node,
+    centerNode: Node,
+    endNode: Node,
+    line1AnchorNode: AnchorNode,
+    line2AnchorNode: AnchorNode,
+    arSession: ARSession
+) {
+    try {
+        val point1 = startNode.worldPosition
+        val point2 = centerNode.worldPosition
+        val point3 = endNode.worldPosition
+
+        val point1Vector3 = point1.toVector3()
+        val point2Vector3 = point2.toVector3()
+        val point3Vector3 = point3.toVector3()
+
+        val difference = Vector3.subtract(point1Vector3, point2Vector3)
+        val difference1 = Vector3.subtract(point2Vector3, point3Vector3)
+        val newPosition = calculateMidPosition(point1Vector3, point2Vector3)
+        val newPosition1 = calculateMidPosition(point2Vector3, point3Vector3)
+        val newQuaternion = calculateQuaternion(point1, point2)
+        val newQuaternion1 = calculateQuaternion(point2, point3)
+        val pose = Pose(newPosition.toFloatArray(), newQuaternion.toFloatArray())
+        val pose1 = Pose(newPosition1.toFloatArray(), newQuaternion1.toFloatArray())
+        val newAnchor = arSession.createAnchor(pose)
+        val newAnchor1 = arSession.createAnchor(pose1)
+        line1AnchorNode.apply {
+            anchor = newAnchor
+            (this.childNodes.firstOrNull())?.apply {
+                transform = Transform(
+                    scale = Scale(0.005f, 0.001f, difference.length())
+                )
+            }
+        }
+        line2AnchorNode.apply {
+            anchor = newAnchor1
+            (this.childNodes.firstOrNull())?.apply {
+                transform = Transform(
+                    scale = Scale(0.005f, 0.001f, difference1.length())
+                )
+            }
+        }
+    } catch (e: Exception) {
+        Log.e("TAG", "DistanceScreen: $e")
+    }
+}
+
 
 fun calculateQuaternion(
     point1: Position,
@@ -181,4 +269,116 @@ fun calculateAndReturnNearestNode(childNodes: List<Node>, anchorHit: Anchor): No
                 false
             }
         }
+}
+
+fun createNewLineNode(
+    engine: Engine,
+    anchor: Anchor,
+    linNode: AnchorNode,
+    materialLoader: MaterialLoader
+): AnchorNode {
+    val newNode = AnchorNode(engine, anchor)
+    newNode.apply {
+        name = Constant.LINE
+        val newLineNode = CubeNode(
+            engine,
+            materialInstance = materialLoader.createColorInstance(
+                Color.Cyan
+            )
+        ).apply {
+            isEditable = false
+            isTouchable = false
+            transform = linNode.childNodes.first().transform
+            name = Constant.LINE
+        }
+        addChildNode(newLineNode)
+    }
+    return newNode
+}
+
+fun createMarkerPointNode(
+    engine: Engine,
+    materialLoader: MaterialLoader,
+    anchor: Anchor
+): AnchorNode {
+    val anchorNode = AnchorNode(engine = engine, anchor = anchor)
+    val sphereNode = CylinderNode(
+        engine = engine,
+        radius = 0.010f, // Sphere radius
+        height = 0.005f, // Sphere height
+        materialInstance = materialLoader.createColorInstance(Color.Blue)
+    ).apply {
+        editableScaleRange  = 0.1f..500.0f
+    }
+    anchorNode.addChildNode(sphereNode)
+    anchorNode.name = Constant.MARKER
+    return anchorNode
+}
+
+fun createReplicatedListForHeight(
+    engine: Engine, materialLoader: MaterialLoader,
+    nodes: List<Node>,
+    session: ARSession
+): List<AnchorNode> {
+    val updatedList = ArrayList<AnchorNode>()
+    nodes.forEachIndexed { index, anchorNode ->
+
+        if (anchorNode.name == Constant.MARKER) {
+            val newAnchor = createNewAnchor(
+                session,
+                Position(
+                    anchorNode.worldPosition.x,
+                    anchorNode.worldPosition.y + 0.05f,
+                    anchorNode.worldPosition.z
+                ), anchorNode.quaternion
+            )
+            val newPointNode =
+                createMarkerPointNode(engine, materialLoader, newAnchor)
+            updatedList.add(newPointNode)
+
+            // create vertical line
+            val newVerticalLineNode =
+                createNewLineNode(engine, newAnchor, anchorNode as AnchorNode, materialLoader)
+            updateLineAnchor(anchorNode, newPointNode, newVerticalLineNode, session)
+            updatedList.add(newVerticalLineNode)
+
+        } else if (anchorNode.name == Constant.LINE) {
+            val newAnchor = createNewAnchor(
+                session,
+                Position(
+                    anchorNode.worldPosition.x,
+                    anchorNode.worldPosition.y + 0.05f,
+                    anchorNode.worldPosition.z
+                ), anchorNode.quaternion
+            )
+            val newLineNode =
+                createNewLineNode(engine, newAnchor, anchorNode as AnchorNode, materialLoader)
+            updatedList.add(newLineNode)
+        }
+
+    }
+    return updatedList
+}
+
+fun createNewAnchor(
+    arSession: ARSession,
+    newPosition: Position,
+    newQuaternion: Quaternion
+): Anchor {
+    val pose = Pose(newPosition.toFloatArray(), newQuaternion.toFloatArray())
+    val newAnchor = arSession.createAnchor(pose)
+    return newAnchor
+}
+
+
+fun List<Pair<Int, Int>>.isIndexEqualToStartOrEnd(index: Int): Boolean {
+    return this.reversed().any { (start, end) ->
+        index == start || index == end
+    }
+}
+
+fun List<Pair<Int, Int>>.findStartEndForIndex(index: Int): Pair<Int, Int>? {
+    return this.find { (start, end) ->
+        index in start..end
+    }
 }
