@@ -59,6 +59,7 @@ import io.github.sceneview.math.Transform
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.Node
+import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -110,7 +111,6 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
             )
         )
     }
-
     // Update the distance dynamically
     LaunchedEffect(childNodes.size) {
         val allAnchorNodes = childNodes.filter { it.name == Constant.MARKER }
@@ -127,7 +127,10 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
         }
     }
 
-    Box(contentAlignment = Alignment.BottomCenter, modifier = Modifier.padding(innerPadding)) {
+    Box(
+        contentAlignment = Alignment.BottomCenter,
+        modifier = Modifier.padding(innerPadding)
+    ) {
         Box(
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -423,7 +426,8 @@ fun DistanceScreen(innerPadding: PaddingValues, mainActivity: MainActivity) {
                                 if (listOfFloorCubeHandlingPos.isNotEmpty()) {
                                     arSceneView?.session?.let {
                                         val lastLoop = listOfFloorCubeHandlingPos.last()
-                                        val nodes = childNodes.subList(lastLoop.first, lastLoop.second + 1)
+                                        val nodes =
+                                            childNodes.subList(lastLoop.first, lastLoop.second + 1)
                                         val replicatedNodes = createReplicatedListForHeight(
                                             engine,
                                             materialLoader,
